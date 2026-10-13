@@ -1,5 +1,5 @@
 name: Build Rocky 9 base image
-run-name: Build Rocky 9 ${{ inputs.cloud }} x86_64 (${{ inputs.disk_size_gb }} GiB disk)
+run-name: Build Rocky 9 ${{ inputs.cloud }} x86_64 (${{ inputs.disk_size_gb }} GiB disk, ${{ inputs.grow_partition }} grows)
 
 on:
   workflow_dispatch:
@@ -15,10 +15,23 @@ on:
           - all
         required: true
       disk_size_gb:
-        description: "Total disk size in GiB (/home gets whatever is left)"
+        description: "Total disk size in GiB"
         type: number
         required: true
         default: 119
+      grow_partition:
+        description: "Partition that grows to fill the rest of the disk (its size below becomes the minimum)"
+        type: choice
+        options:
+          - home
+          - root
+          - var
+          - var_log
+          - var_log_audit
+          - var_tmp
+          - tmp
+        required: true
+        default: home
       root_gb:
         description: "/ size in GiB"
         type: number
@@ -49,6 +62,11 @@ on:
         type: number
         required: true
         default: 8
+      home_gb:
+        description: "/home size in GiB"
+        type: number
+        required: true
+        default: 10
       packer_version:
         description: "Packer version"
         type: string
@@ -81,6 +99,8 @@ jobs:
       VAR_LOG_AUDIT_GB: ${{ inputs.var_log_audit_gb }}
       VAR_TMP_GB: ${{ inputs.var_tmp_gb }}
       TMP_GB: ${{ inputs.tmp_gb }}
+      HOME_GB: ${{ inputs.home_gb }}
+      GROW_PARTITION: ${{ inputs.grow_partition }}
       PACKER_GITHUB_API_TOKEN: ${{ github.token }}
     steps:
       - name: Checkout repository
@@ -144,6 +164,8 @@ jobs:
           var_log_audit_gb = ${VAR_LOG_AUDIT_GB}
           var_tmp_gb       = ${VAR_TMP_GB}
           tmp_gb           = ${TMP_GB}
+          home_gb          = ${HOME_GB}
+          grow_partition   = "${GROW_PARTITION}"
           output_directory = "${BUILD_DIR}/output"
           serial_log       = "${BUILD_DIR}/serial.log"
           EOF

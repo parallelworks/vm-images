@@ -88,6 +88,24 @@ variable "tmp_gb" {
   }
 }
 
+variable "home_gb" {
+  type    = number
+  default = 10
+  validation {
+    condition     = var.home_gb >= 1 && floor(var.home_gb) == var.home_gb
+    error_message = "The home_gb variable must be a whole number of GiB, at least 1."
+  }
+}
+
+variable "grow_partition" {
+  type    = string
+  default = "home"
+  validation {
+    condition     = contains(["root", "var", "var_log", "var_log_audit", "var_tmp", "tmp", "home"], var.grow_partition)
+    error_message = "The grow_partition variable must be one of: root, var, var_log, var_log_audit, var_tmp, tmp, home."
+  }
+}
+
 variable "cpus" {
   type    = number
   default = 4
@@ -161,6 +179,11 @@ locals {
     var_log_audit_mb = var.var_log_audit_gb * 1024
     var_tmp_mb       = var.var_tmp_gb * 1024
     tmp_mb           = var.tmp_gb * 1024
+    home_mb          = var.home_gb * 1024
+    grow = {
+      for p in ["root", "var", "var_log", "var_log_audit", "var_tmp", "tmp", "home"] :
+      p => p == var.grow_partition ? " --grow" : ""
+    }
   })
 
   ks_content = templatefile("${abspath(path.root)}/http/ks-${var.cloud}.cfg.pkrtpl.hcl", {

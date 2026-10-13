@@ -48,6 +48,8 @@ jobs:
           VAR_LOG_AUDIT_GB: "3"
           VAR_TMP_GB: "5"
           TMP_GB: "8"
+          HOME_GB: "10"
+          GROW_PARTITION: "home"
         run: |
           if ./scripts/check-sizes.sh > /dev/null; then
             echo "::error::check-sizes.sh accepted a disk smaller than the fixed partitions"
