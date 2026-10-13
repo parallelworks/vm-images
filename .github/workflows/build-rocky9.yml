@@ -1,0 +1,202 @@
+name: Build Rocky 9 base image
+run-name: Build Rocky 9 ${{ inputs.cloud }} x86_64 (${{ inputs.disk_size_gb }} GiB disk)
+
+on:
+  workflow_dispatch:
+    inputs:
+      cloud:
+        description: "Target cloud (all builds every cloud in parallel)"
+        type: choice
+        options:
+          - aws
+          - azure
+          - google
+          - oracle
+          - all
+        required: true
+      disk_size_gb:
+        description: "Total disk size in GiB (/home gets whatever is left)"
+        type: number
+        required: true
+        default: 119
+      root_gb:
+        description: "/ size in GiB"
+        type: number
+        required: true
+        default: 50
+      var_gb:
+        description: "/var size in GiB"
+        type: number
+        required: true
+        default: 15
+      var_log_gb:
+        description: "/var/log size in GiB"
+        type: number
+        required: true
+        default: 8
+      var_log_audit_gb:
+        description: "/var/log/audit size in GiB"
+        type: number
+        required: true
+        default: 3
+      var_tmp_gb:
+        description: "/var/tmp size in GiB"
+        type: number
+        required: true
+        default: 5
+      tmp_gb:
+        description: "/tmp size in GiB"
+        type: number
+        required: true
+        default: 8
+      packer_version:
+        description: "Packer version"
+        type: string
+        required: true
+        default: 1.14.2
+      retention_days:
+        description: "Days to keep the image artifact (1 to 90)"
+        type: number
+        required: true
+        default: 14
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: build (${{ matrix.cloud }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    strategy:
+      fail-fast: false
+      matrix:
+        cloud: ${{ fromJSON(inputs.cloud == 'all' && '["aws","azure","google","oracle"]' || format('["{0}"]', inputs.cloud)) }}
+    env:
+      CLOUD: ${{ matrix.cloud }}
+      DISK_SIZE_GB: ${{ inputs.disk_size_gb }}
+      ROOT_GB: ${{ inputs.root_gb }}
+      VAR_GB: ${{ inputs.var_gb }}
+      VAR_LOG_GB: ${{ inputs.var_log_gb }}
+      VAR_LOG_AUDIT_GB: ${{ inputs.var_log_audit_gb }}
+      VAR_TMP_GB: ${{ inputs.var_tmp_gb }}
+      TMP_GB: ${{ inputs.tmp_gb }}
+      PACKER_GITHUB_API_TOKEN: ${{ github.token }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Check partition sizes
+        run: ./scripts/check-sizes.sh
+
+      - name: Setup Packer
+        uses: hashicorp/setup-packer@ce93c3c08a6c2ff2275bf4b54ff0d9a75f6c9789 # v3.4.0
+        with:
+          version: ${{ inputs.packer_version }}
+
+      - name: Install QEMU and OVMF
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y --no-install-recommends qemu-system-x86 qemu-utils ovmf zstd
+          ls -l /usr/share/OVMF/OVMF_CODE_4M.fd /usr/share/OVMF/OVMF_VARS_4M.fd
+
+      - name: Pick build directory
+        run: |
+          df -h / /mnt || true
+          root_free=$(df --output=avail -k / | tail -1)
+          mnt_free=$(df --output=avail -k /mnt 2>/dev/null | tail -1 || echo 0)
+          if [ "${mnt_free:-0}" -gt "$root_free" ]; then
+            build_dir=/mnt/build
+          else
+            build_dir="${RUNNER_TEMP}/build"
+          fi
+          sudo mkdir -p "$build_dir"
+          sudo chown "$(id -u):$(id -g)" "$build_dir"
+          echo "BUILD_DIR=${build_dir}" >> "$GITHUB_ENV"
+          echo "PACKER_CACHE_DIR=${build_dir}/packer_cache" >> "$GITHUB_ENV"
+          echo "Building in ${build_dir}"
+
+      - name: Enable KVM
+        id: accel
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+          if [ -r /dev/kvm ] && [ -w /dev/kvm ]; then
+            ls -l /dev/kvm
+            echo "accelerator=kvm" >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning title=KVM unavailable::/dev/kvm is missing or not writable. Falling back to TCG emulation, expect a 2 to 4 hour build."
+            echo "accelerator=tcg" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Write Packer variables
+        env:
+          ACCELERATOR: ${{ steps.accel.outputs.accelerator }}
+        run: |
+          cat > "${BUILD_DIR}/build.pkrvars.hcl" <<EOF
+          cloud            = "${CLOUD}"
+          accelerator      = "${ACCELERATOR}"
+          disk_size_gb     = ${DISK_SIZE_GB}
+          root_gb          = ${ROOT_GB}
+          var_gb           = ${VAR_GB}
+          var_log_gb       = ${VAR_LOG_GB}
+          var_log_audit_gb = ${VAR_LOG_AUDIT_GB}
+          var_tmp_gb       = ${VAR_TMP_GB}
+          tmp_gb           = ${TMP_GB}
+          output_directory = "${BUILD_DIR}/output"
+          serial_log       = "${BUILD_DIR}/serial.log"
+          EOF
+          cat "${BUILD_DIR}/build.pkrvars.hcl"
+
+      - name: Packer init and validate
+        run: |
+          packer init rocky-9/
+          packer validate -var-file="${BUILD_DIR}/build.pkrvars.hcl" rocky-9/
+
+      - name: Packer build
+        env:
+          PACKER_LOG: "1"
+        run: |
+          export PACKER_LOG_PATH="${BUILD_DIR}/packer.log"
+          packer build -color=false -timestamp-ui -var-file="${BUILD_DIR}/build.pkrvars.hcl" rocky-9/
+
+      - name: Compress image
+        id: package
+        run: |
+          cd "${BUILD_DIR}/output"
+          shopt -s nullglob
+          images=( *.vhd *.qcow2 )
+          if [ "${#images[@]}" -ne 1 ]; then
+            echo "::error::expected exactly one image in ${BUILD_DIR}/output, found ${#images[@]}"
+            ls -la
+            exit 1
+          fi
+          image="${images[0]}"
+          zstd -T0 -3 --rm "$image"
+          sha256sum "${image}.zst" >> SHA256SUMS
+          ls -lh
+          cat SHA256SUMS
+          echo "name=${image%.*}" >> "$GITHUB_OUTPUT"
+
+      - name: Upload image
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: ${{ steps.package.outputs.name }}-${{ github.run_number }}
+          path: |
+            ${{ env.BUILD_DIR }}/output/*.zst
+            ${{ env.BUILD_DIR }}/output/SHA256SUMS
+          compression-level: 0
+          retention-days: ${{ inputs.retention_days }}
+          if-no-files-found: error
+
+      - name: Upload build logs
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: logs-${{ matrix.cloud }}-${{ github.run_number }}
+          path: |
+            ${{ env.BUILD_DIR }}/serial.log
+            ${{ env.BUILD_DIR }}/packer.log
+          retention-days: ${{ inputs.retention_days }}
+          if-no-files-found: ignore

@@ -1,0 +1,14 @@
+output-*/
+packer_cache/
+*.raw
+*.vhd
+*.qcow2
+*.zst
+*.iso
+serial.log
+packer.log
+efivars.fd
+*.pkrvars.hcl
+.env
+*.pem
+.DS_Store
