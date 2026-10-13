@@ -25,15 +25,6 @@ variable "accelerator" {
   }
 }
 
-variable "disk_size_gb" {
-  type    = number
-  default = 119
-  validation {
-    condition     = var.disk_size_gb >= 8 && floor(var.disk_size_gb) == var.disk_size_gb
-    error_message = "The disk_size_gb variable must be a whole number of GiB, at least 8."
-  }
-}
-
 variable "root_gb" {
   type    = number
   default = 50
@@ -90,7 +81,7 @@ variable "tmp_gb" {
 
 variable "home_gb" {
   type    = number
-  default = 10
+  default = 29
   validation {
     condition     = var.home_gb >= 1 && floor(var.home_gb) == var.home_gb
     error_message = "The home_gb variable must be a whole number of GiB, at least 1."
@@ -171,6 +162,7 @@ locals {
   shutdown_timeout  = var.shutdown_timeout != "" ? var.shutdown_timeout : (var.accelerator == "tcg" ? "300m" : "90m")
   image_name        = var.image_name != "" ? var.image_name : "rocky9-separate-partitions-${var.cloud}-x86_64"
   console_args      = "console=tty0 console=ttyS0,115200n8"
+  disk_size_gb      = var.root_gb + var.var_gb + var.var_log_gb + var.var_log_audit_gb + var.var_tmp_gb + var.tmp_gb + var.home_gb + 1
 
   partitions = templatefile("${abspath(path.root)}/partitions.pkrtpl.hcl", {
     root_mb          = var.root_gb * 1024
@@ -200,7 +192,7 @@ source "qemu" "rocky9" {
   cpu_model         = local.cpu_model
   cpus              = var.cpus
   memory            = var.memory_mb
-  disk_size         = "${var.disk_size_gb}G"
+  disk_size         = "${local.disk_size_gb}G"
   format            = "raw"
   output_directory  = var.output_directory
   vm_name           = "${local.image_name}.raw"

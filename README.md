@@ -9,25 +9,22 @@ Rocky Linux 9 x86_64 base images with separate partitions, built from the offici
 | google | dynamic VHD | cloud-init only, no Google guest agent |
 | oracle | qcow2 | virtio drivers in initramfs, GRUB on the serial console |
 
-The disk is GPT and boots with either UEFI or legacy BIOS.
+The disk is GPT and boots with UEFI only, so import it as a UEFI or Generation 2 image.
 
 ## Partition layout
 
 | Mount | Default size (GiB) | Workflow input |
 | --- | --- | --- |
 | `/boot/efi` | 0.6 | fixed |
-| biosboot | 1 MiB | fixed |
 | `/` | 50 | `root_gb` |
 | `/var` | 15 | `var_gb` |
 | `/var/log` | 8 | `var_log_gb` |
 | `/var/log/audit` | 3 | `var_log_audit_gb` |
 | `/var/tmp` | 5 | `var_tmp_gb` |
 | `/tmp` | 8 | `tmp_gb` |
-| `/home` | 10 | `home_gb` |
+| `/home` | 29 | `home_gb` |
 
-`grow_partition` picks which partition grows to fill the rest of `disk_size_gb`. It defaults to `home` and can be any of `root`, `var`, `var_log`, `var_log_audit`, `var_tmp`, `tmp` or `home`. The size you give the growing partition is its minimum. With the defaults `/home` ends up at about 29 GiB.
-
-`disk_size_gb` defaults to 119 so the image fits a 120 GB cloud volume. It must be at least the sum of all partitions plus 1 GiB for EFI and biosboot. Every partition is XFS and there is no LVM or swap. `/boot` lives on `/`.
+The disk size is the sum of the partitions plus 1 GiB for the EFI system partition, so the defaults give a 119 GiB disk that fits a 120 GB cloud volume. `grow_partition` picks the partition that takes the space left over after the EFI partition. It defaults to `home` and can be any of `root`, `var`, `var_log`, `var_log_audit`, `var_tmp`, `tmp` or `home`. Every partition is XFS and there is no LVM or swap. `/boot` lives on `/`.
 
 ## Build in GitHub Actions
 
@@ -35,8 +32,8 @@ Run the **Build Rocky 9 base image** workflow from the Actions tab, or from the 
 
 ```bash
 gh workflow run build-rocky9.yml -R parallelworks/vm-images \
-  -f cloud=aws -f disk_size_gb=119 -f grow_partition=home -f root_gb=50 -f var_gb=15 \
-  -f var_log_gb=8 -f var_log_audit_gb=3 -f var_tmp_gb=5 -f tmp_gb=8 -f home_gb=10
+  -f cloud=aws -f grow_partition=home -f root_gb=50 -f var_gb=15 \
+  -f var_log_gb=8 -f var_log_audit_gb=3 -f var_tmp_gb=5 -f tmp_gb=8 -f home_gb=29
 ```
 
 Pick `cloud=all` to build all four clouds in parallel. Builds run on `ubuntu-24.04` hosted runners with KVM and take about 20 to 30 minutes. If a runner has no `/dev/kvm`, the job warns and falls back to software emulation, which takes 2 to 4 hours.
@@ -81,7 +78,7 @@ packer build -var cloud=aws -var accelerator=tcg \
 
 On an Intel Mac use `-var accelerator=hvf` instead.
 
-The image lands in `output-rocky9/` and the installer console log in `serial.log`. Run `scripts/check-sizes.sh` with the `DISK_SIZE_GB`, `ROOT_GB`, `VAR_GB`, `VAR_LOG_GB`, `VAR_LOG_AUDIT_GB`, `VAR_TMP_GB`, `TMP_GB`, `HOME_GB` and `GROW_PARTITION` environment variables to check a layout before a long build.
+The image lands in `output-rocky9/` and the installer console log in `serial.log`. Run `scripts/check-sizes.sh` with the `ROOT_GB`, `VAR_GB`, `VAR_LOG_GB`, `VAR_LOG_AUDIT_GB`, `VAR_TMP_GB`, `TMP_GB`, `HOME_GB` and `GROW_PARTITION` environment variables to check a layout and see the resulting disk size before a long build.
 
 When Rocky 9.9 ships, the 9.8 ISO moves to `https://dl.rockylinux.org/vault/rocky/9.8/isos/x86_64/`. Pass `-var iso_url=...` and `-var iso_checksum=sha256:...` to point at a different ISO. Packages always come from the latest Rocky 9 repositories regardless of the ISO.
 
@@ -135,6 +132,8 @@ oci compute image import from-object -c <compartment ocid> \
   --display-name rocky9-separate-partitions \
   --source-image-type QCOW2 --launch-mode PARAVIRTUALIZED
 ```
+
+Once the import finishes, open the image's **Edit image capabilities** page and make sure **Firmware** is `UEFI_64` only. An instance launched with `BIOS` firmware will not boot.
 
 ## Layout of this repo
 

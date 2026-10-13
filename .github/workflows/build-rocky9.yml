@@ -1,5 +1,5 @@
 name: Build Rocky 9 base image
-run-name: Build Rocky 9 ${{ inputs.cloud }} x86_64 (${{ inputs.disk_size_gb }} GiB disk, ${{ inputs.grow_partition }} grows)
+run-name: Build Rocky 9 ${{ inputs.cloud }} x86_64 (${{ inputs.grow_partition }} grows)
 
 on:
   workflow_dispatch:
@@ -14,13 +14,8 @@ on:
           - oracle
           - all
         required: true
-      disk_size_gb:
-        description: "Total disk size in GiB"
-        type: number
-        required: true
-        default: 119
       grow_partition:
-        description: "Partition that grows to fill the rest of the disk (its size below becomes the minimum)"
+        description: "Partition that grows to fill any space left on the disk (its size below becomes the minimum)"
         type: choice
         options:
           - home
@@ -66,12 +61,12 @@ on:
         description: "/home size in GiB"
         type: number
         required: true
-        default: 10
+        default: 29
       packer_version:
         description: "Packer version"
         type: string
         required: true
-        default: 1.14.2
+        default: 1.16.1
       retention_days:
         description: "Days to keep the image artifact (1 to 90)"
         type: number
@@ -92,7 +87,6 @@ jobs:
         cloud: ${{ fromJSON(inputs.cloud == 'all' && '["aws","azure","google","oracle"]' || format('["{0}"]', inputs.cloud)) }}
     env:
       CLOUD: ${{ matrix.cloud }}
-      DISK_SIZE_GB: ${{ inputs.disk_size_gb }}
       ROOT_GB: ${{ inputs.root_gb }}
       VAR_GB: ${{ inputs.var_gb }}
       VAR_LOG_GB: ${{ inputs.var_log_gb }}
@@ -157,7 +151,6 @@ jobs:
           cat > "${BUILD_DIR}/build.pkrvars.hcl" <<EOF
           cloud            = "${CLOUD}"
           accelerator      = "${ACCELERATOR}"
-          disk_size_gb     = ${DISK_SIZE_GB}
           root_gb          = ${ROOT_GB}
           var_gb           = ${VAR_GB}
           var_log_gb       = ${VAR_LOG_GB}

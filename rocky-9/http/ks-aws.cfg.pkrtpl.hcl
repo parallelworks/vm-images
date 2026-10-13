@@ -80,10 +80,6 @@ set -x
 passwd -d root
 passwd -l root
 
-# Attempting to force legacy BIOS boot if we boot from UEFI
-dnf install grub2-pc-modules grub2-pc -y || exit 1
-grub2-install --target=i386-pc /dev/vda || exit 1
-
 # setup systemd to boot to the right runlevel
 rm -f /etc/systemd/system/default.target
 ln -s /lib/systemd/system/multi-user.target /etc/systemd/system/default.target
