@@ -24,7 +24,23 @@ The disk is GPT and boots with UEFI only, so import it as a UEFI or Generation 2
 | `/tmp` | 8 | `tmp_gb` |
 | `/home` | 29 | `home_gb` |
 
-The disk size is the sum of the partitions plus 1 GiB for the EFI system partition, so the defaults give a 119 GiB disk that fits a 120 GB cloud volume. `grow_partition` picks the partition that takes the space left over after the EFI partition. It defaults to `home` and can be any of `root`, `var`, `var_log`, `var_log_audit`, `var_tmp`, `tmp` or `home`. Every partition is XFS and there is no LVM or swap. `/boot` lives on `/`.
+The disk size is the sum of the partitions plus 1 GiB for the EFI system partition, so the defaults give a 119 GiB disk that fits a 120 GB cloud volume. `grow_partition` picks the partition that is placed last on the disk, so it is the one you can grow after launch. It defaults to `home` and can be any of `root`, `var`, `var_log`, `var_log_audit`, `var_tmp`, `tmp` or `home`. Every partition is XFS and there is no LVM or swap. `/boot` lives on `/`.
+
+### Grow the partition after launch
+
+When you launch the image on a volume larger than the image, the extra space sits unallocated at the end of the disk. Only the last partition can use it, and nothing grows it automatically. Grow it by hand with `growpart`, which every image includes. Set `mount` to the mount point of the partition you picked with `grow_partition`:
+
+```bash
+mount=/home
+src=$(findmnt -no SOURCE "$mount")
+disk=/dev/$(lsblk -no PKNAME "$src")
+part=$(cat "/sys/class/block/$(basename "$src")/partition")
+sudo growpart "$disk" "$part"
+sudo xfs_growfs "$mount"
+df -h "$mount"
+```
+
+The filesystem stays mounted the whole time, so no reboot is needed.
 
 ## Build in GitHub Actions
 
