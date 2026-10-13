@@ -127,7 +127,7 @@ cat << EOF | tee -a /etc/dracut.conf.d/80-azure.conf
 add_drivers+=" hv_vmbus hv_netvsc hv_storvsc "
 EOF
 
-dracut -f -v
+dracut -f --regenerate-all || exit 1
 
 cat <<EOL > /etc/sysconfig/kernel
 # UPDATEDEFAULT specifies if new-kernel-pkg should make
