@@ -15,7 +15,7 @@ The disk is GPT and boots with UEFI only, so import it as a UEFI or Generation 2
 
 | Mount | Default size (GiB) | Workflow input |
 | --- | --- | --- |
-| `/boot/efi` | 0.6 | fixed |
+| `/boot/efi` | 0.2 | fixed |
 | `/` | 50 | `root_gb` |
 | `/var` | 15 | `var_gb` |
 | `/var/log` | 8 | `var_log_gb` |
@@ -52,7 +52,7 @@ gh workflow run build-rocky9.yml -R parallelworks/vm-images \
   -f var_log_gb=8 -f var_log_audit_gb=3 -f var_tmp_gb=5 -f tmp_gb=8 -f home_gb=29
 ```
 
-Pick `cloud=all` to build all four clouds in parallel. Builds run on `ubuntu-24.04` hosted runners with KVM and take about 20 to 30 minutes. If a runner has no `/dev/kvm`, the job warns and falls back to software emulation, which takes 2 to 4 hours.
+Pick `cloud=all` to build all four clouds in parallel. Builds run on `ubuntu-24.04` hosted runners with KVM and take about 20 to 30 minutes. Some hosted runners come without a usable `/dev/kvm`. When that happens the job fails within a minute and logs the CPU and KVM state; re-run the failed job to get another runner. Set `allow_tcg` to build with software emulation on such a runner instead, which takes 2 to 4 hours.
 
 Each job uploads two artifacts:
 

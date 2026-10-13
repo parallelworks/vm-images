@@ -38,7 +38,7 @@ row() {
 summary=$(
   echo "| Mount | Size (GiB) |"
   echo "| --- | --- |"
-  echo "| /boot/efi | 0.6 |"
+  echo "| /boot/efi | 0.2 |"
   row root / "$ROOT_GB"
   row var /var "$VAR_GB"
   row var_log /var/log "$VAR_LOG_GB"
