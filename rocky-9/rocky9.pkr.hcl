@@ -178,8 +178,13 @@ locals {
     }
   })
 
+  ca_distrust = templatefile("${abspath(path.root)}/ca-distrust.pkrtpl.hcl", {
+    pem = trimspace(file("${abspath(path.root)}/emudhra-distrust.pem"))
+  })
+
   ks_content = templatefile("${abspath(path.root)}/http/ks-${var.cloud}.cfg.pkrtpl.hcl", {
-    partitions = local.partitions
+    partitions  = local.partitions
+    ca_distrust = local.ca_distrust
   })
 }
 
