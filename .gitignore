@@ -11,4 +11,5 @@ efivars.fd
 *.pkrvars.hcl
 .env
 *.pem
+!rocky-9/emudhra-distrust.pem
 .DS_Store

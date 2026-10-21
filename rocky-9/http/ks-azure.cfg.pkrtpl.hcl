@@ -30,6 +30,7 @@ ${partitions}
 shutdown
 
 %post --erroronfail --log=/root/ks-post.log
+${ca_distrust}
 KSCON=/dev/ttyS0
 exec > >(tee -a /root/ks-post-console.log $KSCON) 2>&1
 set -x
